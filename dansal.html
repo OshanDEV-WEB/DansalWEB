@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="si">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>වෙසක් දන්සැල් සිතියම | Vesak Dansal Map</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore-compat.js"></script>
+    <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #8B5CF6;
+            --primary-dark: #7C3AED;
+            --secondary: #EC4899;
+            --accent: #F59E0B;
+            --background: #F3F4F6;
+            --card: #FFFFFF;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            font-family: 'Noto Sans Sinhala', sans-serif;
+            background-color: var(--background);
+            scroll-behavior: smooth;
+            overflow-x: hidden;
+        }
+        
+        #map {
+            height: 500px;
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+        }
+        
+        .container-layout {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        @media (min-width: 768px) {
+            .container-layout {
+                flex-direction: row;
+                gap: 1.5rem;
+            }
+            
+            .map-form-container {
+                flex: 1;
+            }
+            
+            .list-container {
+                width: 340px;
+                max-height: 700px;
+                overflow-y: auto;
+            }
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #8B5CF6, #EC4899);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+        
+        .lotus-animation {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        .dansal-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .dansal-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .floating-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+            z-index: 100;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .floating-button:hover {
+            transform: scale(1.1);
+        }
+        
+        .floating-button svg {
+            width: 24px;
+            height: 24px;
+            color: white;
+        }
+        
+        .sidebar-filter {
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+        
+        .search-container {
+            position: relative;
+        }
+        
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .search-results.active {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .map-filter-bar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(5px);
+            border-radius: 8px;
+            padding: 10px;
+            z-index: 1;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Custom marker animation */
+        @keyframes markerPulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .marker-pulse {
+            animation: markerPulse 1.5s ease-in-out infinite;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #c4b5fd;
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8b5cf6;
+        }
+        
+        /* Theme toggle styles */
+        .theme-switch {
+            position: relative;
+            width: 60px;
+            height: 30px;
+            background-color: #e2e8f0;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .theme-switch.dark {
+            background-color: #4b5563;
+        }
+        
+        .theme-switch-handle {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s;
+        }
+        
+        .theme-switch.dark .theme-switch-handle {
+            transform: translateX(30px);
+        }
+
+        /* Statistics chart container */
+        #stats-container {
+            transition: all 0.3s ease;
+        }
+        
+        /* 3D Lotus model container */
+        #lotus-model {
+            width: 100%;
+            height: 200px;
+            transition: height 0.3s ease;
+        }
+        
+        @media (min-width: 768px) {
+            #lotus-model {
+                height: 300px;
+            }
+        }
+        
+        .dark-mode {
+            --primary: #a78bfa;
+            --primary-dark: #8b5cf6;
+            --secondary: #f472b6;
+            --accent: #fbbf24;
+            --background: #1f2937;
+            --card: #374151;
+            color: #f3f4f6;
+        }
+        
+        .dark-mode .bg-white {
+            background-color: var(--card);
+        }
+        
+        .dark-mode .text-gray-700 {
+            color: #e5e7eb;
+        }
+        
+        .dark-mode .text-gray-600 {
+            color: #d1d5db;
+        }
+        
+        .dark-mode .text-gray-500 {
+            color: #9ca3af;
+        }
+        
+        .dark-mode .bg-purple-50 {
+            background-color: rgba(139, 92, 246, 0.1);
+        }
+        
+        .dark-mode .bg-blue-50 {
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+        
+        .dark-mode .border-gray-200 {
+            border-color: #4b5563;
+        }
+        
+        .dark-mode .border-purple-200 {
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+        
+        .dark-mode .border-blue-200 {
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+    </style>
+    
+    <script>
+        // Tailwind configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--primary)',
+                        'primary-dark': 'var(--primary-dark)',
+                        secondary: 'var(--secondary)',
+                        accent: 'var(--accent)',
+                    },
+                    fontFamily: {
+                        'sinhala': ['Noto Sans Sinhala', 'sans-serif']
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        };
+    </script>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 min-h-screen pb-20">
+    <!-- Loading Screen -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="text-center">
+            <div class="relative w-24 h-24 mx-auto mb-4">
+                <!-- Buddhist Wheel (Dharmachakra) Animation -->
+                <div class="absolute inset-0 border-4 border-white rounded-full border-t-transparent animate-spin"></div>
+                
+                <!-- Buddhist Flag Colors as rings -->
+                <div class="absolute inset-2 border-2 border-yellow-400 rounded-full opacity-70"></div>
+                <div class="absolute inset-4 border-2 border-white rounded-full opacity-70"></div>
+                <div class="absolute inset-6 border-2 border-red-500 rounded-full opacity-70"></div>
+                <div class="absolute inset-8 border-2 border-blue-500 rounded-full opacity-70"></div>
+                
+                <!-- Center Buddhist Symbol -->
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <span class="text-xl text-white">☸</span> <!-- Dharma Wheel Unicode -->
+                </div>
+            </div>
+            <h2 class="text-white text-xl font-bold">ප්‍රවේශ වෙමින්...</h2>
+            <p class="text-white text-opacity-80 mt-2">වෙසක් දන්සැල් සිතියම ලෝඩ් වෙමින් පවතී</p>
+        </div>
+    </div>
+    
+    <!-- p5.js Background Animation Container -->
+    <div id="lotus-background" class="lotus-animation"></div>
+    
+    <!-- Navigation Bar -->
+    <nav class="bg-white bg-opacity-90 backdrop-blur-md sticky top-0 z-10 shadow-sm">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
+                    <span class="text-white text-lg">☸</span> <!-- Buddhist Dharma Wheel symbol -->
+                </div>
+                <h1 class="text-lg md:text-xl font-bold text-primary">වෙසක් දන්සැල් සිතියම</h1>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <div class="theme-switch" id="theme-toggle">
+                    <div class="theme-switch-handle"></div>
+                </div>
+                
+                <button id="open-stats-btn" class="hidden md:flex items-center space-x-1 text-sm text-primary hover:text-primary-dark transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+                    </svg>
+                    <span>දත්ත විශ්ලේෂණය</span>
+                </button>
+                
+                <button id="help-btn" class="flex items-center space-x-1 text-sm text-primary hover:text-primary-dark transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                    </svg>
+                    <span>උදව්</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <div class="container mx-auto px-4 py-6">
+        <!-- Header section - simplified without 3D lotus -->
+        <div class="rounded-xl overflow-hidden mb-6 bg-gradient-to-r from-primary/10 to-secondary/10 p-6 relative">
+            <!-- Buddhist flag design element -->
+            <div class="absolute top-0 left-0 w-12 h-24 md:w-16 md:h-32 pointer-events-none">
+                <div class="h-1/5 bg-blue-500"></div>
+                <div class="h-1/5 bg-yellow-400"></div>
+                <div class="h-1/5 bg-red-500"></div>
+                <div class="h-1/5 bg-white"></div>
+                <div class="h-1/5 bg-orange-500"></div>
+                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-white text-xl">☸</div>
+            </div>
+            
+            <div class="text-center">
+                <h1 class="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+                    ශ්‍රී ලංකාවේ වෙසක් දන්සැල් සිතියම
+                </h1>
+                <p class="text-gray-600 mt-2 max-w-2xl mx-auto">
+                    සිතියම මත ලකුණු කර ඇති දන්සැල් බලන්න. නව දන්සැලක් එක් කිරීමට, සිතියම මත එහි ස්ථානය Click කරන්න, ඉන්පසු පහත තොරතුරු පුරවන්න.
+                </p>
+            </div>
+        </div>
+        
+        <!-- Stats section (hidden by default) -->
+        <div id="stats-container" class="bg-white rounded-xl shadow-md p-6 mb-6 transform scale-y-0 h-0 origin-top opacity-0">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-primary">දන්සැල් දත්ත විශ්ලේෂණය</h2>
+                <button id="close-stats-btn" class="text-gray-500 hover:text-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div class="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                    <h3 class="text-sm text-gray-600 mb-1">මුළු දන්සැල් ගණන</h3>
+                    <p id="total-dansals" class="text-2xl font-bold text-primary">0</p>
+                </div>
+                <div class="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                    <h3 class="text-sm text-gray-600 mb-1">බහුලම ප්‍රදේශය</h3>
+                    <p id="popular-area" class="text-xl font-bold text-primary">-</p>
+                </div>
+                <div class="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                    <h3 class="text-sm text-gray-600 mb-1">බහුලම ආහාරය</h3>
+                    <p id="popular-food" class="text-xl font-bold text-primary">-</p>
+                </div>
+            </div>
+            <div class="h-64 bg-purple-50 rounded-lg p-4 border border-purple-100 flex items-center justify-center">
+                <p class="text-gray-500 text-center">දත්ත ප්‍රමාණවත් නොවේ</p>
+            </div>
+        </div>
+        
+        <!-- Search Bar -->
+        <div class="relative mb-6">
+            <div class="search-container">
+                <div class="relative">
+                    <input type="text" id="search-input" placeholder="දන්සැල් සොයන්න..." class="w-full rounded-lg border border-gray-300 py-3 px-4 pl-10 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 absolute left-3 top-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div id="search-results" class="search-results">
+                    <!-- Search results will appear here -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="container-layout">
+            <!-- Map and Form Container -->
+            <div class="map-form-container">
+                <div class="relative mb-6">
+                    <div id="map"></div>
+                    <div class="map-filter-bar flex items-center gap-2 overflow-x-auto pb-1">
+                        <button class="filter-btn flex-shrink-0 px-3 py-1.5 rounded-md bg-white shadow-sm border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition" data-filter="all">සියල්ල</button>
+                        <button class="filter-btn flex-shrink-0 px-3 py-1.5 rounded-md bg-white shadow-sm border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition" data-filter="food">ආහාර</button>
+                        <button class="filter-btn flex-shrink-0 px-3 py-1.5 rounded-md bg-white shadow-sm border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition" data-filter="drink">පානීය</button>
+                        <button class="filter-btn flex-shrink-0 px-3 py-1.5 rounded-md bg-white shadow-sm border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition" data-filter="dessert">අතුරුපස</button>
+                        <button class="filter-btn flex-shrink-0 px-3 py-1.5 rounded-md bg-white shadow-sm border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition" data-filter="other">වෙනත්</button>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-md p-6 mb-6 transform transition-all duration-300 border border-gray-200">
+                    <h2 class="text-xl font-bold text-primary mb-4 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
+                        </svg>
+                        නව දන්සැලක් සිතියමට එක් කරන්න
+                    </h2>
+                    
+                    <p id="form-instructions" class="text-center text-red-600 font-medium text-sm mb-4">
+                        📌 දන්සල පිහිටි ස්ථානය සිතියම මත Click කරන්න.
+                    </p>
+                    <div id="selected-coords" class="text-sm text-gray-500 text-center mb-4 h-5"></div>
+                    
+                    <form id="add-dansal-form" class="space-y-4">
+                        <input type="hidden" id="dansal-lat">
+                        <input type="hidden" id="dansal-lng">
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="dansal-location" class="block text-sm font-medium text-gray-700 mb-1">ස්ථානය/නම:</label>
+                                <input type="text" id="dansal-location" required placeholder="සිතියමෙන් තෝරාගත් ස්ථානයේ නම" class="w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            
+                            <div>
+                                <label for="dansal-time" class="block text-sm font-medium text-gray-700 mb-1">වේලාව:</label>
+                                <input type="text" id="dansal-time" required placeholder="උදා: සවස 6 සිට රාත්‍රී 10 දක්වා" class="w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label for="dansal-description" class="block text-sm font-medium text-gray-700 mb-1">විස්තරය:</label>
+                            <textarea id="dansal-description" rows="2" required placeholder="උදා: බත් දන්සැල, අයිස් ක්‍රීම්" class="w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></textarea>
+                        </div>
+                        
+                        <div>
+                            <label for="dansal-category" class="block text-sm font-medium text-gray-700 mb-1">වර්ගය:</label>
+                            <select id="dansal-category" class="w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <option value="food">ආහාර</option>
+                                <option value="drink">පානීය</option>
+                                <option value="dessert">අතුරුපස</option>
+                                <option value="other">වෙනත්</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label for="dansal-organizer" class="block text-sm font-medium text-gray-700 mb-1">සංවිධායක:</label>
+                            <input type="text" id="dansal-organizer" placeholder="දන්සැල සංවිධානය කරන පුද්ගලයා/සංවිධානය (අවශ්‍ය නැත)" class="w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                        
+                        <div>
+                            <label for="dansal-contact" class="block text-sm font-medium text-gray-700 mb-1">සම්බන්ධ කරගත හැකි අංකය:</label>
+                            <input type="text" id="dansal-contact" placeholder="දුරකථන අංකය (අවශ්‍ය නැත)" class="w-full rounded-lg border border-gray-300 py-2 px-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-gradient-to-r from-primary to-secondary hover:from-primary-dark hover:to-secondary text-white font-bold py-3 px-4 rounded-lg transition duration-300 shadow-md shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0
+
+                                100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                            </svg>
+                            දන්සැල එකතු කරන්න
+                        </button>
+                    </form>
+                </div>
+                
+                <div class="bg-white rounded-xl shadow-md p-6 mb-6 transform transition-all duration-300 border border-gray-200">
+                    <h2 class="text-xl font-bold text-primary mb-4 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                            <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd" />
+                        </svg>
+                        දන්සැල් ලැයිස්තුව
+                    </h2>
+                    <span id="dansals-count" class="text-sm bg-primary/10 text-primary font-medium px-2 py-1 rounded">0</span>
+                </div>
+                
+                <div class="flex items-center justify-between mb-3">
+                    <button id="toggle-filters" class="text-sm text-primary flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+                        </svg>
+                        <span>පෙරහන්</span>
+                    </button>
+                    <button id="sort-button" class="text-sm text-primary flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z" />
+                        </svg>
+                        <span>අලුත්ම ඒවා</span>
+                    </button>
+                </div>
+                
+                <div id="sidebar-filter" class="sidebar-filter max-h-0 overflow-hidden">
+                    <div class="bg-blue-50 p-3 rounded-lg mb-3">
+                        <h3 class="text-sm font-medium text-blue-700 mb-2">ප්‍රදේශය අනුව</h3>
+                        <div class="space-y-1">
+                            <label class="flex items-center text-sm text-gray-700">
+                                <input type="checkbox" class="h-4 w-4 text-primary rounded mr-2" value="colombo">
+                                කොළඹ
+                            </label>
+                            <label class="flex items-center text-sm text-gray-700">
+                                <input type="checkbox" class="h-4 w-4 text-primary rounded mr-2" value="kandy">
+                                මහනුවර
+                            </label>
+                            <label class="flex items-center text-sm text-gray-700">
+                                <input type="checkbox" class="h-4 w-4 text-primary rounded mr-2" value="galle">
+                                ගාල්ල
+                            </label>
+                            <label class="flex items-center text-sm text-gray-700">
+                                <input type="checkbox" class="h-4 w-4 text-primary rounded mr-2" value="other">
+                                වෙනත්
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="dansal-list" class="space-y-3 overflow-y-auto pr-1 max-h-[500px]">
+                    <p id="no-dansal-message" class="text-center text-gray-500 italic text-sm py-8">දැනට දන්සැල් කිසිවක් වාර්තා වී නොමැත.</p>
+                    <!-- Dansal entries will be added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Floating Button -->
+    <div id="scroll-top" class="floating-button">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+        </svg>
+    </div>
+    
+    <!-- Help Modal -->
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md mx-4 w-full max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-primary">උදව්</h2>
+                    <button id="close-help-btn" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <h3 class="font-medium text-primary">සිතියම භාවිතය</h3>
+                        <p class="text-sm text-gray-600 mt-1">සිතියමේ දන්සැල් බැලීමට marker ක්ලික් කරන්න. නව දන්සැලක් එකතු කිරීමට, සිතියම මත අදාල ස්ථානය ක්ලික් කර පසුව ආකෘතිය සම්පූර්ණ කරන්න.</p>
+                    </div>
+                    
+                    <div>
+                        <h3 class="font-medium text-primary">දන්සැල් සෙවීම</h3>
+                        <p class="text-sm text-gray-600 mt-1">ඉහළ සෙවුම් කොටුව භාවිතා කර ස්ථානය, ආහාර වර්ගය හෝ පැවැත්වෙන වේලාව අනුව දන්සැල් සොයන්න.</p>
+                    </div>
+                    
+                    <div>
+                        <h3 class="font-medium text-primary">පෙරහන් (Filters)</h3>
+                        <p class="text-sm text-gray-600 mt-1">සිතියම ඉහළින් ඇති පෙරහන් බොත්තම් හෝ දන්සැල් ලැයිස්තුවේ ඇති පෙරහන් කොටස භාවිතා කර අවශ්‍ය දන්සැල් වර්ගය පමණක් පෙන්වන්න.</p>
+                    </div>
+                    
+                    <div>
+                        <h3 class="font-medium text-primary">දත්ත විශ්ලේෂණය</h3>
+                        <p class="text-sm text-gray-600 mt-1">වැඩිපුරම ඇති දන්සැල් වර්ග සහ ප්‍රදේශ ගැන තොරතුරු බැලීමට නැවිගේෂන් තීරුවේ ඇති දත්ත විශ්ලේෂණ බොත්තම ක්ලික් කරන්න.</p>
+                    </div>
+                    
+                    <div>
+                        <h3 class="font-medium text-primary">පැහැ මාරු කිරීම</h3>
+                        <p class="text-sm text-gray-600 mt-1">අඳුරු පැහැ සහ ආලෝක පැහැ අතර මාරු වීමට ඉහළ දකුණු කෙළවරේ ඇති පැහැ මාරු බොත්තම භාවිතා කරන්න.</p>
+                    </div>
+                    
+                    <p class="text-xs text-center text-gray-500 mt-4">
+                        මෙම වෙබ් අඩවිය මගින් වෙසක් සමයේ දන්සැල් පිළිබඳ තොරතුරු ජනතාවට ලබා දීමට අපේක්ෂා කරයි.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDONGosGC_mk1XUGvzAJWiOfj1emwSiNew&callback=initMap&libraries=marker" async defer></script>
+    
+    <script>
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAQKJ6H94m-w78L-ALO1Y5basVsIueIbpM",
+            authDomain: "dansal-web-sri-lanka.firebaseapp.com",
+            projectId: "dansal-web-sri-lanka",
+            storageBucket: "dansal-web-sri-lanka.firebasestorage.app",
+            messagingSenderId: "781063127299",
+            appId: "1:781063127299:web:31c7148b956f896f1ce936"
+        };
+        
+        // --- Global Variables ---
+        let map;
+        let db;
+        let dansalCollection;
+        let selectionMarker = null;
+        let persistentMarkers = [];
+        let markerClustererInstance = null;
+        let infoWindow;
+        let isDarkMode = false;
+        let foodKeywords = {
+            'food': ['බත්', 'කෑම', 'ආහාර', 'rice', 'food'],
+            'drink': ['පානීය', 'තේ', 'කොපි', 'drink', 'tea', 'coffee'],
+            'dessert': ['අයිස්ක්‍රීම්', 'කැවිලි', 'dessert', 'ice cream', 'sweets'],
+            'other': ['වෙනත්', 'other']
+        };
+        
+        // --- DOM Ready Function ---
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize UI elements and attach event listeners
+            setupEventListeners();
+            
+            // Show loading overlay with a minimum display time of 2 seconds
+            setTimeout(function() {
+                document.getElementById('loading-overlay').style.opacity = 0;
+                setTimeout(function() {
+                    document.getElementById('loading-overlay').style.display = 'none';
+                }, 500);
+            }, 2000);
+        });
+        
+        // --- Initialize Firebase ---
+        function initFirebase() {
+            try {
+                // Check if config exists and has an API key
+                if (firebaseConfig && firebaseConfig.apiKey) {
+                    firebase.initializeApp(firebaseConfig);
+                    db = firebase.firestore();
+                    dansalCollection = db.collection('dansals');
+                    console.log("Firebase Initialized Successfully!");
+                    return true;
+                } else {
+                    console.error("Firebase configuration is missing or incomplete!");
+                    alert("Firebase හරියට configure කරලා නැහැ.");
+                    document.getElementById('add-dansal-form').style.display = 'none';
+                    document.getElementById('form-instructions').textContent = '⚠️ Firebase සම්බන්ධතාවය සකසා නොමැත!';
+                    return false;
+                }
+            } catch (e) {
+                console.error("Error initializing Firebase:", e);
+                alert("Could not initialize Firebase. Check console for errors.");
+                document.getElementById('add-dansal-form').style.display = 'none';
+                document.getElementById('form-instructions').textContent = '⚠️ Firebase සම්බන්ධතාවයේ දෝෂයක්!';
+                return false;
+            }
+        }
+        
+        // --- Google Maps Initialization Function ---
+        function initMap() {
+            // Check if Google Maps API loaded correctly
+            if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+                console.error('Google Maps API failed to load.');
+                alert('Google Maps පූරණය වීමේ දෝෂයක්. කරුණාකර අන්තර්ජාල සම්බන්ධතාවය සහ API Key එක පරික්ෂා කරන්න.');
+                document.getElementById('map').innerHTML = '<p style="text-align: center; padding-top: 50px; color: red;">සිතියම පූරණය කළ නොහැක.</p>';
+                return;
+            }
+            
+            const sriLankaCenter = { lat: 7.8731, lng: 80.7718 };
+            try {
+                // Custom map style with soft colors
+                const mapStyles = [
+                    {
+                        "featureType": "administrative",
+                        "elementType": "labels.text.fill",
+                        "stylers": [{"color": "#6445a8"}]
+                    },
+                    {
+                        "featureType": "landscape",
+                        "elementType": "all",
+                        "stylers": [{"color": "#f5f5f5"}]
+                    },
+                    {
+                        "featureType": "poi",
+                        "elementType": "all",
+                        "stylers": [{"visibility": "simplified"}]
+                    },
+                    {
+                        "featureType": "road",
+                        "elementType": "all",
+                        "stylers": [{"saturation": -100}, {"lightness": 45}]
+                    },
+                    {
+                        "featureType": "road.highway",
+                        "elementType": "all",
+                        "stylers": [{"visibility": "simplified"}]
+                    },
+                    {
+                        "featureType": "water",
+                        "elementType": "all",
+                        "stylers": [{"color": "#c3cdf9"}, {"visibility": "on"}]
+                    }
+                ];
+                
+                // Create the map with custom styles
+                map = new google.maps.Map(document.getElementById("map"), {
+                    zoom: 8,
+                    center: sriLankaCenter,
+                    mapId: 'VESAK_DANSAL_MAP_ID',
+                    styles: mapStyles,
+                    mapTypeControl: false,
+                    fullscreenControl: true,
+                    streetViewControl: false,
+                    zoomControl: true,
+                    zoomControlOptions: {
+                        position: google.maps.ControlPosition.RIGHT_BOTTOM
+                    }
+                });
+                
+                // Create info window for markers
+                infoWindow = new google.maps.InfoWindow();
+                
+                // Map Click Listener
+                map.addListener('click', handleMapClick);
+                
+                // Initialize Firebase after map is ready
+                const firebaseInitialized = initFirebase();
+                
+                // Fetch and Display Dansals (only if Firebase is connected)
+                if (firebaseInitialized && dansalCollection) {
+                    displayExistingDansals();
+                }
+                
+                // Map is idle, set up animations
+                google.maps.event.addListenerOnce(map, 'idle', () => {
+                    console.log("Map is idle, setting up animations...");
+                });
+                
+            } catch (e) {
+                console.error("Error creating Google Map:", e);
+                alert("Google Map එක සෑදීමේ දෝෂයක්. API Key එක හෝ වෙනත් configuration ගැටලුවක් විය හැක.");
+                document.getElementById('map').innerHTML = '<p style="text-align: center; padding-top: 50px; color: red;">සිතියම සෑදීමේ දෝෂයක්.</p>';
+            }
+        }
+        
+        // --- Handle Map Click ---
+        function handleMapClick(event) {
+            if (!dansalCollection || !event.latLng) {
+                alert("Firebase සම්බන්ධතාවයක් නැත හෝ සිතියම් ක්ලික් කිරීමේ දෝෂයක්!");
+                return;
+            }
+            
+            const clickedLat = event.latLng.lat();
+            const clickedLng = event.latLng.lng();
+            
+            document.getElementById('dansal-lat').value = clickedLat;
+            document.getElementById('dansal-lng').value = clickedLng;
+            document.getElementById('selected-coords').textContent = `තෝරාගත් ස්ථානය: Lat: ${clickedLat.toFixed(5)}, Lng: ${clickedLng.toFixed(5)}`;
+            
+            const formInstructions = document.getElementById('form-instructions');
+            formInstructions.style.color = '#4CAF50';
+            formInstructions.textContent = '✅ ස්ථානය තෝරාගෙන ඇත. දැන් විස්තර පුරවන්න.';
+            
+            // Place/move selection marker
+            if (selectionMarker) {
+                selectionMarker.setPosition(event.latLng);
+            } else {
+                try {
+                    // Try using AdvancedMarkerElement if available
+                    if (google.maps.marker && google.maps.marker.AdvancedMarkerElement) {
+                        selectionMarker = new google.maps.marker.AdvancedMarkerElement({
+                            position: event.latLng,
+                            map: map,
+                            title: 'තෝරාගත් ස්ථානය'
+                        });
+                    } else {
+                        // Fallback to standard marker
+                        selectionMarker = new google.maps.Marker({
+                            position: event.latLng,
+                            map: map,
+                            title: 'තෝරාගත් ස්ථානය',
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                fillColor: '#8B5CF6',
+                                fillOpacity: 1,
+                                strokeColor: '#ffffff',
+                                strokeWeight: 2,
+                                scale: 8
+                            },
+                            animation: google.maps.Animation.BOUNCE
+                        });
+                        
+                        // Stop the bouncing after 3 seconds
+                        setTimeout(() => {
+                            if (selectionMarker) {
+                                selectionMarker.setAnimation(null);
+                            }
+                        }, 3000);
+                    }
+                } catch (e) {
+                    console.error("Error creating marker:", e);
+                    // Ultimate fallback to standard marker with no special features
+                    selectionMarker = new google.maps.Marker({
+                        position: event.latLng,
+                        map: map,
+                        title: 'තෝරාගත් ස්ථානය'
+                    });
+                }
+            }
+            
+            // Enable the submit button
+            document.querySelector('#add-dansal-form button[type="submit"]').disabled = false;
+            
+            // Smooth scroll to the form
+            document.getElementById('add-dansal-form').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // --- Function to Display Existing Dansals ---
+        function displayExistingDansals() {
+            if (!dansalCollection) {
+                console.error("Dansal Collection is not initialized!");
+                return;
+            }
+            console.log("displayExistingDansals called");
+
+            dansalCollection
+                .orderBy('createdAt', 'desc')
+                .onSnapshot(snapshot => {
+                    console.log("Snapshot received, empty:", snapshot.empty, "size:", snapshot.size);
+
+                    // Clear existing markers and reset arrays
+                    persistentMarkers.forEach(marker => marker.setMap(null));
+                    persistentMarkers = [];
+                    
+                    if (markerClustererInstance) {
+                        console.log("Clearing previous marker clusterer instance.");
+                        markerClustererInstance.clearMarkers();
+                    }
+                    
+                   // ... (inside onSnapshot callback)
+    const dansalListDiv = document.getElementById('dansal-list');
+    const noDansalMessage = document.getElementById('no-dansal-message');
+
+    // --- Check if element exists before using .style ---
+    if (noDansalMessage) {
+        noDansalMessage.style.display = 'block';
+    } else {
+        console.error("Could not find element with ID: no-dansal-message"); // Error එකක් දාමු හොයාගන්න බැරි වුනොත්
+    }
+    // -----------------------------------------------------
+
+    if (snapshot.empty) {
+        console.log("Snapshot is empty.");
+        // ... (rest of the code for empty snapshot)
+    } else {
+        // --- Check again before using .style ---
+        if (noDansalMessage) {
+            noDansalMessage.style.display = 'none';
+        }
+        // ---------------------------------------
+        // ... (rest of the code to process snapshot, add markers etc.)
+    }
+    // ...
+
+                    if (snapshot.empty) {
+                        console.log("Snapshot is empty.");
+                        document.getElementById('dansals-count').textContent = '0';
+                        document.getElementById('total-dansals').textContent = '0';
+                        document.getElementById('popular-area').textContent = '-';
+                        document.getElementById('popular-food').textContent = '-';
+                    } else {
+                        noDansalMessage.style.display = 'none';
+                        document.getElementById('dansals-count').textContent = snapshot.size;
+                        document.getElementById('total-dansals').textContent = snapshot.size;
+
+                        let areas = {};
+                        let foods = {};
+
+                        snapshot.forEach(doc => {
+                            console.log("Processing doc:", doc.id, "Data:", doc.data());
+                            const dansal = doc.data();
+                            const dansalId = doc.id;
+                            
+                            // Collect statistics data
+                            if (dansal.location) {
+                                const mainLocation = dansal.location.split(',')[0].trim();
+                                areas[mainLocation] = (areas[mainLocation] || 0) + 1;
+                            }
+                            
+                            const category = dansal.category || detectCategory(dansal.description);
+                            foods[category] = (foods[category] || 0) + 1;
+
+                            // Add marker if coordinates exist and are valid numbers
+                            if (dansal && typeof dansal.lat === 'number' && typeof dansal.lng === 'number') {
+                                console.log("Adding marker for:", dansalId, "at", dansal.lat, ",", dansal.lng);
+                                const createdMarker = addMarkerToDansal(dansal, dansalId);
+                                if (createdMarker) {
+                                    persistentMarkers.push(createdMarker);
+                                } else {
+                                    console.warn("Marker creation failed for:", dansalId);
+                                }
+                            } else {
+                                console.warn("Skipping marker for doc:", doc.id, "- Invalid lat/lng:", dansal.lat, dansal.lng);
+                            }
+
+                            // Add to list
+                            addDansalToList(dansal, dansalId);
+                        });
+
+                        // Update statistics
+                        updateStatistics(areas, foods);
+
+                        // Initialize marker clusterer if we have markers
+                        console.log("Markers array for clustering:", persistentMarkers);
+                        if (persistentMarkers.length > 0) {
+                            console.log("Initializing MarkerClusterer...");
+                            markerClustererInstance = new markerClusterer.MarkerClusterer({
+                                map: map,
+                                markers: persistentMarkers
+                            });
+                            console.log("MarkerClusterer initialized.");
+                        } else {
+                            console.log("No valid markers to cluster.");
+                        }
+                    }
+                }, error => {
+                    console.error("Error fetching Dansals (onSnapshot error): ", error);
+                    const noDansalMessage = document.getElementById('no-dansal-message');
+                    noDansalMessage.textContent = 'දන්සැල් ලැයිස්තුව ලබාගැනීමේ දෝෂයක්.';
+                    noDansalMessage.style.display = 'block';
+                });
+        }
+        
+        // --- Detect Category from Description ---
+        function detectCategory(description) {
+            if (!description) return 'other';
+            
+            description = description.toLowerCase();
+            
+            for (const [category, keywords] of Object.entries(foodKeywords)) {
+                for (const keyword of keywords) {
+                    if (description.includes(keyword.toLowerCase())) {
+                        return category;
+                    }
+                }
+            }
+            
+            return 'other';
+        }
+        
+        // --- Add Marker to Dansal ---
+        function addMarkerToDansal(dansal, dansalId) {
+            try {
+                const position = { lat: dansal.lat, lng: dansal.lng };
+                
+                // Determine icon based on category
+                let iconUrl = '';
+                let category = dansal.category || detectCategory(dansal.description);
+                
+                switch(category) {
+                    case 'food':
+                        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/red-dot.png';
+                        break;
+                    case 'drink':
+                        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+                        break;
+                    case 'dessert':
+                        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png';
+                        break;
+                    default:
+                        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/purple-dot.png';
+                }
+                
+                // Create the marker
+                const marker = new google.maps.Marker({
+                    position: position,
+                    map: map,
+                    title: dansal.location,
+                    icon: iconUrl,
+                    animation: google.maps.Animation.DROP,
+                    optimized: false // Required for CSS animations
+                });
+                
+                // Store category with marker for filtering
+                marker.category = category;
+                marker.dansalId = dansalId;
+                
+                // Add click listener for info window
+                marker.addListener('click', () => {
+                    const organizer = dansal.organizer ? `<p style="margin: 2px 0;"><strong>සංවිධායක:</strong> ${dansal.organizer}</p>` : '';
+                    const contact = dansal.contact ? `<p style="margin: 2px 0;"><strong>සම්බන්ධතා:</strong> ${dansal.contact}</p>` : '';
+                    
+                    const contentString = `
+                        <div style="font-family: 'Noto Sans Sinhala', sans-serif; padding: 5px;">
+                            <h3 style="margin: 5px 0; color: #8B5CF6; font-size: 16px;">${dansal.location || 'නමක් නැත'}</h3>
+                            <p style="margin: 2px 0;"><strong>වේලාව:</strong> ${dansal.time || '?'}</p>
+                            <p style="margin: 2px 0;"><strong>විස්තරය:</strong> ${dansal.description || '-'}</p>
+                            ${organizer}
+                            ${contact}
+                            <p style="margin: 4px 0 0; font-size: 12px; color: #6B7280;">එකතු කළේ: ${formatTimestamp(dansal.createdAt)}</p>
+                        </div>`;
+                    
+                    infoWindow.setContent(contentString);
+                    infoWindow.open(map, marker);
+                });
+                
+                return marker;
+            } catch (error) {
+                console.error("Error creating marker:", error);
+                return null;
+            }
+        }
+        
+        // --- Format Timestamp ---
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return 'Unknown';
+            
+            try {
+                const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+                return date.toLocaleDateString('si-LK') + ' ' + date.toLocaleTimeString('si-LK', {hour: '2-digit', minute:'2-digit'});
+            } catch (e) {
+                console.error('Error formatting timestamp:', e);
+                return 'Invalid date';
+            }
+        }
+        
+        // --- Add Dansal to List ---
+        function addDansalToList(dansal, dansalId) {
+            try {
+                const dansalListDiv = document.getElementById('dansal-list');
+                
+                // Determine category for styling
+                const category = dansal.category || detectCategory(dansal.description || '');
+                let categoryBadge = '';
+                let categoryColor = '';
+                
+                switch(category) {
+                    case 'food':
+                        categoryBadge = 'ආහාර';
+                        categoryColor = 'bg-red-100 text-red-700';
+                        break;
+                    case 'drink':
+                        categoryBadge = 'පානීය';
+                        categoryColor = 'bg-blue-100 text-blue-700';
+                        break;
+                    case 'dessert':
+                        categoryBadge = 'අතුරුපස';
+                        categoryColor = 'bg-yellow-100 text-yellow-700';
+                        break;
+                    default:
+                        categoryBadge = 'වෙනත්';
+                        categoryColor = 'bg-purple-100 text-purple-700';
+                }
+                
+                const div = document.createElement('div');
+                div.className = 'p-4 rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md transition duration-300 dansal-card';
+                div.dataset.id = dansalId;
+                div.dataset.category = category;
+                
+                // Format the location - split into main and sub parts if comma exists
+                let locationDisplay = dansal.location || 'නොදන්නා ස්ථානය';
+                let locationSecondary = '';
+                
+                if (dansal.location && dansal.location.includes(',')) {
+                    const parts = dansal.location.split(',');
+                    locationDisplay = parts[0].trim();
+                    locationSecondary = parts.slice(1).join(',').trim();
+                }
+                
+                div.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="font-semibold text-gray-800">${locationDisplay}</h3>
+                            ${locationSecondary ? `<p class="text-xs text-gray-500 mt-0.5">${locationSecondary}</p>` : ''}
+                        </div>
+                        <span class="text-xs ${categoryColor} font-medium px-2 py-1 rounded-full">${categoryBadge}</span>
+                    </div>
+                    <div class="mt-2 space-y-1">
+                        <p class="text-xs text-gray-600 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+                            </svg>
+                            ${dansal.time || 'වේලාව දක්වා නැත'}
+                        </p>
+                        <p class="text-xs text-gray-600 flex items-start">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                            </svg>
+                            ${dansal.description || '-'}
+                        </p>
+                        ${dansal.organizer ? `
+                        <p class="text-xs text-gray-600 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                            </svg>
+                            ${dansal.organizer}
+                        </p>` : ''}
+                    </div>
+                    <div class="flex justify-between items-center mt-3 pt-2 border-t border-gray-100">
+                        <span class="text-xs text-gray-400">${formatTimestamp(dansal.createdAt)}</span>
+                        ${(dansal.lat && dansal.lng) ?
+                            `<button class="text-xs text-primary hover:text-primary-dark transition view-on-map" data-lat="${dansal.lat}" data-lng="${dansal.lng}" data-id="${dansalId}">
+                                සිතියමේ බලන්න
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 inline ml-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                </svg>
+                            </button>`
+                            : '<p class="text-xs text-red-500">සිතියමේ ලකුණු කර නොමැත</p>'
+                        }
+                    </div>
+                `;
+                
+                dansalListDiv.appendChild(div);
+                
+                // Add event listener to "View on Map" button
+                if (dansal.lat && dansal.lng) {
+                    const viewButton = div.querySelector('.view-on-map');
+                    if (viewButton) {
+                        viewButton.addEventListener('click', function() {
+                            const lat = parseFloat(this.dataset.lat);
+                            const lng = parseFloat(this.dataset.lng);
+                            const id = this.dataset.id;
+                            centerMapOn(lat, lng, id);
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error("Error adding dansal to list:", error);
+            }
+        }
+        
+        // --- Helper Function to Clear Persistent Markers ---
+        function clearPersistentMarkers() {
+            persistentMarkers.forEach(marker => marker.setMap(null));
+            persistentMarkers = [];
+        }
+        
+        // --- Helper Function to Center Map ---
+        function centerMapOn(lat, lng, dansalId) {
+            if (map && lat && lng) {
+                const center = new google.maps.LatLng(lat, lng);
+                map.panTo(center);
+                map.setZoom(15);
+                
+                // Smooth scroll to map on mobile
+                if (window.innerWidth < 768) {
+                    document.getElementById('map').scrollIntoView({ behavior: 'smooth' });
+                }
+                
+                // Simulate click on the marker to open InfoWindow
+                persistentMarkers.forEach(marker => {
+                    if (marker.getPosition().lat() === lat && marker.getPosition().lng() === lng || 
+                        (dansalId && marker.dansalId === dansalId)) {
+                        // Add animation to highlight the marker
+                        marker.setAnimation(google.maps.Animation.BOUNCE);
+                        setTimeout(() => marker.setAnimation(null), 2100);
+                        
+                        // Open info window
+                        google.maps.event.trigger(marker, 'click');
+                    }
+                });
+            }
+        }
+        
+        // --- Update Statistics ---
+        function updateStatistics(areas, foods) {
+            // Find most popular area
+            let popularArea = '';
+            let maxAreaCount = 0;
+            for (const [area, count] of Object.entries(areas)) {
+                if (count > maxAreaCount) {
+                    maxAreaCount = count;
+                    popularArea = area;
+                }
+            }
+            
+            // Find most popular food type
+            let popularFood = '';
+            let maxFoodCount = 0;
+            for (const [food, count] of Object.entries(foods)) {
+                if (count > maxFoodCount) {
+                    maxFoodCount = count;
+                    popularFood = food;
+                }
+            }
+            
+            // Update the statistics display
+            document.getElementById('popular-area').textContent = popularArea || '-';
+            
+            // Translate food category to Sinhala
+            let foodLabel = '';
+            switch(popularFood) {
+                case 'food': foodLabel = 'ආහාර'; break;
+                case 'drink': foodLabel = 'පානීය'; break;
+                case 'dessert': foodLabel = 'අතුරුපස'; break;
+                default: foodLabel = 'වෙනත්';
+            }
+            
+            document.getElementById('popular-food').textContent = foodLabel || '-';
+        }
+        
+        // --- Filter Markers by Category ---
+        function filterMarkersByCategory(category) {
+            if (!persistentMarkers || persistentMarkers.length === 0) return;
+            
+            persistentMarkers.forEach(marker => {
+                if (category === 'all' || marker.category === category) {
+                    marker.setMap(map);
+                } else {
+                    marker.setMap(null);
+                }
+            });
+            
+            // Also filter the list items
+            const listItems = document.querySelectorAll('#dansal-list > div');
+            listItems.forEach(item => {
+                if (category === 'all' || item.dataset.category === category) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+        
+        // --- Setup Event Listeners ---
+        function setupEventListeners() {
+            // Form Submission Handler
+            const dansalForm = document.getElementById('add-dansal-form');
+            if (dansalForm) {
+                dansalForm.addEventListener('submit', function(event) {
+                    event.preventDefault();
+                    
+                    if (!dansalCollection) {
+                        alert('Firestore සම්බන්ධතාවයේ දෝෂයක්. දන්සැල එකතු කළ නොහැක.');
+                        return;
+                    }
+                    
+                    const latInput = document.getElementById('dansal-lat');
+                    const lngInput = document.getElementById('dansal-lng');
+                    const locationInput = document.getElementById('dansal-location');
+                    const timeInput = document.getElementById('dansal-time');
+                    const descriptionInput = document.getElementById('dansal-description');
+                    const categoryInput = document.getElementById('dansal-category');
+                    const organizerInput = document.getElementById('dansal-organizer');
+                    const contactInput = document.getElementById('dansal-contact');
+                    
+                    const latValue = parseFloat(latInput.value);
+                    const lngValue = parseFloat(lngInput.value);
+                    
+                    if (isNaN(latValue) || isNaN(lngValue)) {
+                        alert('කරුණාකර පළමුව සිතියම මත දන්සල පිහිටි ස්ථානය click කර තෝරන්න.');
+                        return;
+                    }
+                    
+                    const newDansal = {
+                        location: locationInput.value.trim(),
+                        lat: latValue,
+                        lng: lngValue,
+                        time: timeInput.value.trim(),
+                        description: descriptionInput.value.trim(),
+                        category: categoryInput.value,
+                        organizer: organizerInput.value.trim(),
+                        contact: contactInput.value.trim(),
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    
+                    if (!newDansal.location || !newDansal.time || !newDansal.description) {
+                        alert('කරුණාකර ස්ථානය, වේලාව සහ විස්තරය අනිවාර්යයෙන් පුරවන්න.');
+                        return;
+                    }
+                    
+                    // Add to Firestore
+                    dansalCollection.add(newDansal)
+                        .then((docRef) => {
+                            console.log("Dansal added with ID: ", docRef.id);
+                            dansalForm.reset();
+                            latInput.value = '';
+                            lngInput.value = '';
+                            document.getElementById('selected-coords').textContent = '';
+                            const formInstructions = document.getElementById('form-instructions');
+                            formInstructions.style.color = '#e53e3e';
+                            formInstructions.textContent = '📌 දන්සල පිහිටි ස්ථානය සිතියම මත Click කරන්න.';
+                            
+                            if (selectionMarker) {
+                                selectionMarker.setMap(null);
+                                selectionMarker = null;
+                            }
+                            
+                            document.querySelector('#add-dansal-form button[type="submit"]').disabled = true;
+                            
+                            // Show success message
+                            const successMessage = document.createElement('div');
+                            successMessage.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md z-50';
+                            successMessage.innerHTML = `
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <svg class="h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div class="ml-3">
+                                        <p class="text-sm">දන්සැල සාර්ථකව එකතු කරන ලදී!</p>
+                                    </div>
+                                </div>
+                            `;
+                            document.body.appendChild(successMessage);
+                            
+                            // Remove the message after 3 seconds
+                            setTimeout(() => {
+                                successMessage.style.opacity = '0';
+                                successMessage.style.transition = 'opacity 0.5s ease';
+                                setTimeout(() => {
+                                    document.body.removeChild(successMessage);
+                                }, 500);
+                            }, 3000);
+                        })
+                        .catch((error) => {
+                            console.error("Error adding dansal: ", error);
+                            alert('දන්සැල එකතු කිරීමේදී දෝෂයක් ඇතිවිය.');
+                        });
+                });
+            }
+            
+            // Map filter buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const category = this.dataset.filter;
+                    
+                    // Update active state visually
+                    document.querySelectorAll('.filter-btn').forEach(b => {
+                        b.classList.remove('bg-primary', 'text-white');
+                        b.classList.add('bg-white', 'text-gray-700');
+                    });
+                    this.classList.remove('bg-white', 'text-gray-700');
+                    this.classList.add('bg-primary', 'text-white');
+                    
+                    // Apply the filter
+                    filterMarkersByCategory(category);
+                });
+            });
+            
+            // Scroll to top button
+            const scrollTopBtn = document.getElementById('scroll-top');
+            if (scrollTopBtn) {
+                scrollTopBtn.addEventListener('click', function() {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+            }
+            
+            // Toggle sidebar filters
+            const toggleFiltersBtn = document.getElementById('toggle-filters');
+            if (toggleFiltersBtn) {
+                toggleFiltersBtn.addEventListener('click', function() {
+                    const sidebarFilter = document.getElementById('sidebar-filter');
+                    if (sidebarFilter.style.maxHeight === '0px' || !sidebarFilter.style.maxHeight) {
+                        sidebarFilter.style.maxHeight = '300px';
+                    } else {
+                        sidebarFilter.style.maxHeight = '0px';
+                    }
+                });
+            }
+            
+            // Search functionality
+            const searchInput = document.getElementById('search-input');
+            const searchResults = document.getElementById('search-results');
+            
+            if (searchInput && searchResults) {
+                searchInput.addEventListener('input', function() {
+                    const query = this.value.trim().toLowerCase();
+                    
+                    if (query.length < 2) {
+                        searchResults.classList.remove('active');
+                        searchResults.innerHTML = '';
+                        return;
+                    }
+                    
+                    // Show the search results container
+                    searchResults.classList.add('active');
+                    searchResults.innerHTML = '';
+                    
+                    // If no dansals to search
+                    if (persistentMarkers.length === 0) {
+                        searchResults.innerHTML = '<p class="p-3 text-sm text-gray-500">දන්සැල් කිසිවක් දත්ත ගබඩාවේ නොමැත.</p>';
+                        return;
+                    }
+                    
+                    // Get all dansals from the list
+                    const dansalItems = document.querySelectorAll('#dansal-list > div');
+                    let results = [];
+                    
+                    dansalItems.forEach(item => {
+                        const title = item.querySelector('h3')?.textContent.toLowerCase() || '';
+                        const description = item.querySelector('p:nth-child(2)')?.textContent.toLowerCase() || '';
+                        
+                        if (title.includes(query) || description.includes(query)) {
+                            const viewBtn = item.querySelector('.view-on-map');
+                            results.push({
+                                id: item.dataset.id,
+                                title: item.querySelector('h3')?.textContent || 'Unknown',
+                                lat: viewBtn ? viewBtn.dataset.lat : null,
+                                lng: viewBtn ? viewBtn.dataset.lng : null
+                            });
+                        }
+                    });
+                    
+                    if (results.length === 0) {
+                        searchResults.innerHTML = '<p class="p-3 text-sm text-gray-500">ගැලපෙන ප්‍රතිඵල හමු නොවීය.</p>';
+                    } else {
+                        results.slice(0, 5).forEach(result => {
+                            const resultItem = document.createElement('div');
+                            resultItem.className = 'p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 text-sm';
+                            resultItem.textContent = result.title;
+                            
+                            resultItem.addEventListener('click', function() {
+                                searchInput.value = result.title;
+                                searchResults.classList.remove('active');
+                                
+                                if (result.lat && result.lng) {
+                                    centerMapOn(parseFloat(result.lat), parseFloat(result.lng), result.id);
+                                }
+                            });
+                            
+                            searchResults.appendChild(resultItem);
+                        });
+                        
+                        if (results.length > 5) {
+                            const moreText = document.createElement('p');
+                            moreText.className = 'p-2 text-xs text-center text-gray-500';
+                            moreText.textContent = `තවත් ප්‍රතිඵල ${results.length - 5} ක් ඇත.`;
+                            searchResults.appendChild(moreText);
+                        }
+                    }
+                });
+                
+                // Close search results when clicking outside
+                document.addEventListener('click', function(e) {
+                    if (searchInput && searchResults && !searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                        searchResults.classList.remove('active');
+                    }
+                });
+            }
+            
+            // Stats section toggle
+            const openStatsBtn = document.getElementById('open-stats-btn');
+            const closeStatsBtn = document.getElementById('close-stats-btn');
+            const statsContainer = document.getElementById('stats-container');
+            
+            if (openStatsBtn && statsContainer) {
+                openStatsBtn.addEventListener('click', function() {
+                    statsContainer.classList.remove('scale-y-0', 'h-0', 'opacity-0');
+                    statsContainer.classList.add('scale-y-100', 'opacity-100');
+                    statsContainer.style.height = 'auto';
+                });
+            }
+            
+            if (closeStatsBtn && statsContainer) {
+                closeStatsBtn.addEventListener('click', function() {
+                    statsContainer.classList.remove('scale-y-100', 'opacity-100');
+                    statsContainer.classList.add('scale-y-0', 'h-0', 'opacity-0');
+                });
+            }
+            
+            // Help modal
+            const helpBtn = document.getElementById('help-btn');
+            const closeHelpBtn = document.getElementById('close-help-btn');
+            const helpModal = document.getElementById('help-modal');
+            
+            if (helpBtn && helpModal) {
+                helpBtn.addEventListener('click', function() {
+                    helpModal.classList.remove('hidden');
+                });
+            }
+            
+            if (closeHelpBtn && helpModal) {
+                closeHelpBtn.addEventListener('click', function() {
+                    helpModal.classList.add('hidden');
+                });
+            }
+            
+            // Theme toggle
+            const themeToggle = document.getElementById('theme-toggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('click', function() {
+                    toggleDarkMode();
+                });
+            }
+        }
+        
+        // --- Toggle Dark Mode ---
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            const themeToggle = document.getElementById('theme-toggle');
+            
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+                if (themeToggle) themeToggle.classList.add('dark');
+                
+                // Update map style if map exists
+                if (map) {
+                    const darkMapStyles = [
+                        {elementType: 'geometry', stylers: [{color: '#242f3e'}]},
+                        {elementType: 'labels.text.stroke', stylers: [{color: '#242f3e'}]},
+                        {elementType: 'labels.text.fill', stylers: [{color: '#746855'}]},
+                        {featureType: 'water', elementType: 'geometry', stylers: [{color: '#17263c'}]},
+                        {featureType: 'water', elementType: 'labels.text.fill', stylers: [{color: '#515c6d'}]},
+                        {featureType: 'road', elementType: 'geometry', stylers: [{color: '#38414e'}]},
+                        {featureType: 'road', elementType: 'geometry.stroke', stylers: [{color: '#212a37'}]},
+                        {featureType: 'road', elementType: 'labels.text.fill', stylers: [{color: '#9ca5b3'}]}
+                    ];
+                    map.setOptions({styles: darkMapStyles});
+                }
+            } else {
+                document.body.classList.remove('dark-mode');
+                if (themeToggle) themeToggle.classList.remove('dark');
+                
+                // Revert map style if map exists
+                if (map) {
+                    const lightMapStyles = [
+                        {featureType: 'administrative', elementType: 'labels.text.fill', stylers: [{color: '#6445a8'}]},
+                        {featureType: 'landscape', elementType: 'all', stylers: [{color: '#f5f5f5'}]},
+                        {featureType: 'poi', elementType: 'all', stylers: [{visibility: 'simplified'}]},
+                        {featureType: 'road', elementType: 'all', stylers: [{saturation: -100}, {lightness: 45}]},
+                        {featureType: 'water', elementType: 'all', stylers: [{color: '#c3cdf9'}, {visibility: 'on'}]}
+                    ];
+                    map.setOptions({styles: lightMapStyles});
+                }
+            }
+        }
+    </script>
+</body>
+</html>
